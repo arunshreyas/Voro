@@ -155,9 +155,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     if (!user) return { url: null, error: new Error('No user logged in') };
     
     try {
+      console.log('Starting avatar upload for user:', user.id);
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
+
+      console.log('Uploading file to path:', filePath);
 
       // Upload file to storage
       const { error: uploadError } = await supabase.storage
@@ -167,7 +171,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           upsert: false
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('File uploaded successfully');
 
       // Get public URL
       const { data } = supabase.storage
@@ -175,6 +184,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         .getPublicUrl(filePath);
 
       const avatarUrl = data.publicUrl;
+      console.log('Avatar URL:', avatarUrl);
 
       // Update profile with new avatar URL
       const { error: updateError } = await supabase
@@ -185,10 +195,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         })
         .eq('id', user.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw updateError;
+      }
+
+      console.log('Profile updated successfully');
 
       // Update local profile state
-      setProfile(prev => prev ? { ...prev, avatar_url: avatarUrl } : null);
+      setProfile(prev => {
+        const updated = prev ? { ...prev, avatar_url: avatarUrl } : null;
+        console.log('Updated local profile state:', updated);
+        return updated;
+      });
 
       return { url: avatarUrl, error: null };
     } catch (error) {
