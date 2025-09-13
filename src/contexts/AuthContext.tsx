@@ -18,6 +18,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, name?: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>;
+  uploadAvatar: (file: File) => Promise<{ url: string | null; error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -119,6 +121,58 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await supabase.auth.signOut();
   };
 
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!user) return { error: new Error('No user logged in') };
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Update local profile state
+      setProfile(prev => prev ? { ...prev, ...updates } : null);
+      
+      return { error: null };
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      return { error };
+    }
+  };
+
+  const uploadAvatar = async (file: File) => {
+    if (!user) return { url: null, error: new Error('No user logged in') };
+    
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      return { url: data.publicUrl, error: null };
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      return { url: null, error };
+    }
+  };
+
   const value = {
     user,
     session,
@@ -127,6 +181,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     signUp,
     signIn,
     signOut,
+    updateProfile,
+    uploadAvatar,
   };
 
   return (
