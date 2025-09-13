@@ -15,7 +15,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, name?: string, username?: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>;
@@ -93,7 +93,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, name?: string) => {
+  const signUp = async (email: string, password: string, name?: string, username?: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
@@ -101,9 +101,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       password,
       options: {
         emailRedirectTo: redirectUrl,
-        data: name ? { full_name: name } : {}
+        data: { 
+          full_name: name || '',
+          username: username || ''
+        }
       }
     });
+    
+    // If signup is successful and we have a username, create the profile
+    if (!error && username) {
+      try {
+        // Get the user ID from the auth response
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              username: username,
+              full_name: name || '',
+              avatar_url: null,
+              bio: null
+            });
+        }
+      } catch (profileError) {
+        console.error('Error creating profile:', profileError);
+        // Don't return error here as the user account was created successfully
+      }
+    }
     
     return { error };
   };

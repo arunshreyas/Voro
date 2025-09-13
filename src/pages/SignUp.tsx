@@ -15,6 +15,7 @@ import voroLogo from "@/assets/voro-logo.png";
 const SignUp = () => {
   const [formData, setFormData] = useState({
     name: "",
+    username: "",
     email: "",
     password: "",
     confirmPassword: ""
@@ -56,22 +57,78 @@ const SignUp = () => {
       return;
     }
 
-    setLoading(true);
-    
-    const { error } = await signUp(formData.email, formData.password, formData.name);
-    
-    if (error) {
+    // Validate username
+    if (!formData.username.trim()) {
       toast({
-        title: "Sign up failed",
-        description: error.message,
+        title: "Error",
+        description: "Username is required",
         variant: "destructive",
       });
-    } else {
+      return;
+    }
+
+    // Check username format (alphanumeric and underscores only)
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(formData.username)) {
       toast({
-        title: "Success!",
-        description: "Please check your email to verify your account",
+        title: "Error",
+        description: "Username can only contain letters, numbers, and underscores",
+        variant: "destructive",
       });
-      navigate("/login");
+      return;
+    }
+
+    // Check username length
+    if (formData.username.length < 3 || formData.username.length > 20) {
+      toast({
+        title: "Error",
+        description: "Username must be between 3 and 20 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      // Check if username is already taken
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', formData.username)
+        .single();
+
+      if (existingUser) {
+        toast({
+          title: "Error",
+          description: "Username is already taken",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      const { error } = await signUp(formData.email, formData.password, formData.name, formData.username);
+      
+      if (error) {
+        toast({
+          title: "Sign up failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success!",
+          description: "Please check your email to verify your account",
+        });
+        navigate("/login");
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
     }
     
     setLoading(false);
@@ -175,7 +232,7 @@ const SignUp = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">Full Name</Label>
                 <Input
                   id="name"
                   type="text"
@@ -185,6 +242,22 @@ const SignUp = () => {
                   className="bg-input border-border"
                   required
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="johndoe"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  className="bg-input border-border"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Username can only contain letters, numbers, and underscores (3-20 characters)
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -288,7 +361,7 @@ const SignUp = () => {
                 variant="gradient"
                 size="lg"
                 className="w-full"
-                disabled={!formData.name || !formData.email || !formData.password || formData.password !== formData.confirmPassword || loading}
+                disabled={!formData.name || !formData.username || !formData.email || !formData.password || formData.password !== formData.confirmPassword || loading}
               >
                 {loading ? "Creating Account..." : "Sign Up"}
               </Button>
