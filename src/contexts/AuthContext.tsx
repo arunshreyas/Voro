@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signUp = async (email: string, password: string, name?: string, username?: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -108,27 +108,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     });
     
-    // If signup is successful and we have a username, create the profile
-    if (!error && username) {
-      try {
-        // Get the user ID from the auth response
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase
-            .from('profiles')
-            .insert({
-              id: user.id,
-              username: username,
-              full_name: name || '',
-              avatar_url: null,
-              bio: null
-            });
-        }
-      } catch (profileError) {
-        console.error('Error creating profile:', profileError);
-        // Don't return error here as the user account was created successfully
-      }
-    }
+    // Profile will be automatically created by the database trigger
+    // No need to manually create it here
     
     return { error };
   };
@@ -178,6 +159,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
+      // Upload file to storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
@@ -187,11 +169,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       if (uploadError) throw uploadError;
 
+      // Get public URL
       const { data } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
 
-      return { url: data.publicUrl, error: null };
+      const avatarUrl = data.publicUrl;
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          avatar_url: avatarUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      // Update local profile state
+      setProfile(prev => prev ? { ...prev, avatar_url: avatarUrl } : null);
+
+      return { url: avatarUrl, error: null };
     } catch (error) {
       console.error('Error uploading avatar:', error);
       return { url: null, error };
